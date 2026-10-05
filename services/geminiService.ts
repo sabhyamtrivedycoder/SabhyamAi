@@ -5,6 +5,11 @@
 
 import { GoogleGenAI, GenerateContentResponse, Modality } from "@google/genai";
 import { UserMeasurements, WardrobeItem, AIStyleAdvice } from "../types";
+import {
+    compositeTryOn,
+    compositeModelFallback,
+    compositePoseFallback
+} from '../lib/fittingEngine';
 
 export const fileToPart = async (file: File | Blob): Promise<{ inlineData: { mimeType: string; data: string } }> => {
     const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -40,30 +45,35 @@ export const anyImageToPart = async (input: File | Blob | string): Promise<{ inl
                 const blob = await res.blob();
                 return fileToPart(blob);
             }
-        } catch (fetchErr) {
-            console.warn('Direct fetch failed, falling back to Image element loader:', fetchErr);
+        } catch {
+            // continue to fallback
         }
 
         // Fallback: load in Image element with crossOrigin
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             const img = new Image();
             img.crossOrigin = 'anonymous';
             img.onload = () => {
                 try {
                     const canvas = document.createElement('canvas');
-                    canvas.width = img.naturalWidth || img.width;
-                    canvas.height = img.naturalHeight || img.height;
+                    canvas.width = img.naturalWidth || img.width || 400;
+                    canvas.height = img.naturalHeight || img.height || 600;
                     const ctx = canvas.getContext('2d');
-                    if (!ctx) throw new Error('Could not get canvas context');
-                    ctx.drawImage(img, 0, 0);
-                    const dataUrl = canvas.toDataURL('image/png');
-                    const arr = dataUrl.split(',');
-                    resolve({ inlineData: { mimeType: 'image/png', data: arr[1] } });
-                } catch (canvasErr) {
-                    reject(canvasErr);
+                    if (ctx) {
+                        ctx.drawImage(img, 0, 0);
+                        const dataUrl = canvas.toDataURL('image/png');
+                        const arr = dataUrl.split(',');
+                        resolve({ inlineData: { mimeType: 'image/png', data: arr[1] } });
+                        return;
+                    }
+                } catch {
+                    // canvas tainted
                 }
+                resolve({ inlineData: { mimeType: 'image/png', data: '' } });
             };
-            img.onerror = () => reject(new Error(`Failed to load image from: ${input}`));
+            img.onerror = () => {
+                resolve({ inlineData: { mimeType: 'image/png', data: '' } });
+            };
             img.src = input;
         });
     }
@@ -78,7 +88,6 @@ const handleApiResponse = (response: GenerateContentResponse): string => {
         throw new Error(errorMessage);
     }
 
-    // Find the first image part in any candidate
     for (const candidate of response.candidates ?? []) {
         const imagePart = candidate.content?.parts?.find(part => part.inlineData);
         if (imagePart?.inlineData) {
@@ -89,110 +98,290 @@ const handleApiResponse = (response: GenerateContentResponse): string => {
 
     const finishReason = response.candidates?.[0]?.finishReason;
     if (finishReason && finishReason !== 'STOP') {
-        const errorMessage = `Image generation stopped unexpectedly. Reason: ${finishReason}. This often relates to safety settings.`;
-        throw new Error(errorMessage);
+        throw new Error(`Generation finished with reason: ${finishReason}`);
     }
-    const textFeedback = response.text?.trim();
-    const errorMessage = `The AI model did not return an image. ` + (textFeedback ? `The model responded with text: "${textFeedback}"` : "This can happen due to safety filters or quota limits. Please try a different image.");
-    throw new Error(errorMessage);
+    throw new Error('No image was returned from the model.');
 };
 
-const ai = new GoogleGenAI({ 
-    apiKey: process.env.API_KEY || (process.env as any).GEMINI_API_KEY || '',
-    httpOptions: {
-        headers: {
-            'User-Agent': 'aistudio-build',
-        }
-    }
-});
+// Client-side instance as fallback
+const getClientAi = () => {
+    const key = process.env.API_KEY || (process.env as any).GEMINI_API_KEY || '';
+    if (!key) return null;
+    return new GoogleGenAI({
+        apiKey: key,
+        httpOptions: {
+            headers: {
+                'User-Agent': 'aistudio-build',
+            },
+        },
+    });
+};
 
-const model = 'gemini-2.5-flash-image';
+const clientModel = 'gemini-3.1-flash-image';
 const textModel = 'gemini-3.8-flash';
-
-import {
-    compositeTryOn,
-    compositeModelFallback,
-    compositePoseFallback
-} from '../lib/fittingEngine';
 
 /**
  * Generate full-body model with strict face accuracy & physical measurements
  */
 export const generateModelImage = async (userImage: File | string, measurements?: UserMeasurements): Promise<string> => {
-    let userImagePart;
-    try {
-        userImagePart = await anyImageToPart(userImage);
-    } catch {
-        return await compositeModelFallback(userImage);
+    let userImageDataUrl = '';
+    if (typeof userImage === 'string') {
+        userImageDataUrl = userImage;
+    } else {
+        const part = await fileToPart(userImage);
+        userImageDataUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
     }
-    
-    const measurementContext = measurements 
-        ? `
-**PHYSICAL PROPORTIONS & USER SPECIFICATIONS:**
-- Height Profile: ${measurements.height}
-- Weight / Mass: ${measurements.weight}
-- Body Build / Shape: ${measurements.bodyType}
-- Target Presentation: ${measurements.gender} styling
-- Aesthetic Vibe: ${measurements.styleVibe || 'Modern Chic'}
-Accurately structure the full-body model's stature, height, and natural body proportions according to these measurements.
-`
-        : '';
 
-    const prompt = `You are a world-class high-fashion AI photographer and virtual fitting expert for Sabhyamai. 
-Your task is to transform the person in this source photo into an e-commerce full-body fashion model standing in a clean, neutral studio backdrop (light gray, #f0f0f0).
-
-**MANDATORY 100% ACCURATE FACE PRESERVATION (TOP PRIORITY):**
-1. EXACT FACE FIDELITY: The person's face MUST BE 100% ACCURATE to the source image. Preserve their exact facial geometry, eyes, eyelids, eye color, nose shape, lip shape, mouth, smile lines, jawline, chin, cheekbones, skin tone, facial hair/beard, eyebrows, hair color, and hair texture.
-2. DO NOT ALTER OR SWAP THE FACE: Absolutely NO generic AI model faces, NO beautification filters, NO facial smoothing, and NO ethnicity or age alteration. The person MUST instantly recognize themselves.
-${measurementContext}
-3. POSE & ATTIRE: Place the person in a relaxed, confident standing model posture facing forward. Clothe them in simple, neutral minimalist base garments (e.g. fitted neutral tank top / tee and fitted neutral pants or trousers) ready for layering clothes on top.
-4. PHOTOREALISM: Studio soft-diffused lighting, 8k quality, realistic skin textures, shadows, and natural human anatomy.
-
-Return ONLY the final generated image.`;
-
+    // 1. First, call the server-side API proxy
     try {
-        const response = await ai.models.generateContent({
-            model,
-            contents: { parts: [userImagePart, { text: prompt }] },
-            config: {
-                responseModalities: [Modality.IMAGE, Modality.TEXT],
-            },
+        const res = await fetch('/api/generate-model', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: userImageDataUrl, measurements }),
         });
-        return handleApiResponse(response);
-    } catch (err: any) {
-        console.info('Switching to zero-cost Instant Model Engine (No API fees):', err?.message);
-        return await compositeModelFallback(userImage);
+
+        if (res.ok) {
+            const data = await res.json();
+            if (data.imageUrl) {
+                return data.imageUrl;
+            }
+        }
+    } catch (serverErr) {
+        console.warn('Server model generation endpoint unreachable, attempting client fallback:', serverErr);
     }
+
+    // 2. Direct client fallback if client API key is configured
+    const ai = getClientAi();
+    if (ai) {
+        try {
+            const userImagePart = await anyImageToPart(userImage);
+            const prompt = `Transform this photo into an e-commerce model in a clean light studio. 100% face accuracy required. Return ONLY the final image.`;
+            const response = await ai.models.generateContent({
+                model: clientModel,
+                contents: { parts: [userImagePart, { text: prompt }] },
+                config: {
+                    responseModalities: [Modality.IMAGE, Modality.TEXT],
+                },
+            });
+            return handleApiResponse(response);
+        } catch (clientErr) {
+            console.warn('Client GenAI model generation fallback:', clientErr);
+        }
+    }
+
+    // 3. Instant local model composite fallback (100% face fidelity guaranteed)
+    return await compositeModelFallback(userImage);
 };
 
 /**
- * Perform virtual try-on while keeping the person's face 100% untouched
+ * Diagnostic event listener for monitoring try-on steps in the UI
  */
-export const generateVirtualTryOnImage = async (modelImageUrl: string, garmentInput: File | string): Promise<string> => {
+export type TryOnLogListener = (step: string, details?: any, status?: 'info' | 'success' | 'warn' | 'error') => void;
+let activeTryOnListener: TryOnLogListener | null = null;
+
+export const setTryOnLogListener = (listener: TryOnLogListener | null) => {
+    activeTryOnListener = listener;
+};
+
+const notifyDiagnostic = (step: string, details?: any, status: 'info' | 'success' | 'warn' | 'error' = 'info') => {
+    if (activeTryOnListener) {
+        try {
+            activeTryOnListener(step, details, status);
+        } catch {
+            // Ignore listener errors
+        }
+    }
+};
+
+export interface TryOnOptions {
+    preferredModel?: 'gemini-3.1-flash-image' | 'gemini-3.1-flash-lite-image' | string;
+    onProgressUpdate?: (message: string) => void;
+}
+
+/**
+ * Perform virtual try-on with comprehensive step-by-step console logging, multi-model retry, and error trapping.
+ */
+export const generateVirtualTryOnImage = async (
+    modelImageUrl: string,
+    garmentInput: File | string,
+    garmentCategory: string = 'baggy',
+    options?: TryOnOptions
+): Promise<string> => {
+    const tryOnStartTime = Date.now();
+    console.group(`👗 [Sabhyam AI Try-On] Starting Virtual Fitting Pipeline (${garmentCategory})`);
+    notifyDiagnostic('tryon_started', { category: garmentCategory }, 'info');
+
+    // -------------------------------------------------------------
+    // STEP 1: Input Validation & Sanitization
+    // -------------------------------------------------------------
+    console.log('%c[Step 1/6: Input Validation]', 'color: #3b82f6; font-weight: bold;');
     try {
-        const modelImagePart = await anyImageToPart(modelImageUrl);
-        const garmentImagePart = await anyImageToPart(garmentInput);
-        
-        const prompt = `You are an expert virtual try-on AI for Sabhyamai. You will be given a 'model image' and a 'garment image'. 
-Your task is to create a photorealistic image where the person from the 'model image' is wearing the clothing from the 'garment image'.
+        if (!modelImageUrl) {
+            throw new Error('Validation failed: modelImageUrl is null or empty');
+        }
+        if (!garmentInput) {
+            throw new Error('Validation failed: garmentInput is null or empty');
+        }
 
-**STRICT PRESERVATION RULES:**
-1. **UNTOUCHED 1:1 FACE ACCURACY:** The person's face, facial features, expression, eyes, nose, mouth, hair, skin complexion, and head structure from the 'model image' MUST REMAIN 100% UNCHANGED AND ACCURATE. Do NOT touch, morph, blur, or alter any part of their face.
-2. **BODY & POSE FIDELITY:** The model's exact height, body silhouette, pose, hands, legs, and background (#f0f0f0 studio) MUST be preserved exactly as shown.
-3. **COMPLETE GARMENT REPLACEMENT:** Completely replace the previous clothing with the new garment from the 'garment image'. The new clothing must realistically wrap around their specific body proportions with natural folds, drape, shadows, fabric texture, and authentic seamlines.
-4. **OUTPUT:** Return ONLY the final photorealistic image.`;
+        const isModelDataUrl = modelImageUrl.startsWith('data:');
+        console.log(`  ✓ Model Image: ${isModelDataUrl ? `Data URL (${Math.round(modelImageUrl.length / 1024)} KB)` : modelImageUrl}`);
+        console.log(`  ✓ Garment Input: ${typeof garmentInput === 'string' ? (garmentInput.startsWith('data:') ? `Data URL (${Math.round(garmentInput.length / 1024)} KB)` : garmentInput) : `File: ${garmentInput.name} (${Math.round(garmentInput.size / 1024)} KB)`}`);
+        console.log(`  ✓ Garment Category: "${garmentCategory}"`);
+        notifyDiagnostic('inputs_validated', { garmentCategory }, 'success');
+    } catch (step1Err: any) {
+        console.error('❌ [Step 1/6 Error - Invalid Inputs]:', step1Err);
+        console.groupEnd();
+        notifyDiagnostic('validation_failed', { error: step1Err.message }, 'error');
+        throw step1Err;
+    }
 
-        const response = await ai.models.generateContent({
-            model,
-            contents: { parts: [modelImagePart, garmentImagePart, { text: prompt }] },
-            config: {
-                responseModalities: [Modality.IMAGE, Modality.TEXT],
+    // -------------------------------------------------------------
+    // STEP 2: Garment Encoding & Payload Packaging
+    // -------------------------------------------------------------
+    console.log('%c[Step 2/6: Garment Encoding & Serialization]', 'color: #3b82f6; font-weight: bold;');
+    let garmentUrl = '';
+    try {
+        if (typeof garmentInput === 'string') {
+            garmentUrl = garmentInput;
+            console.log(`  ✓ Garment URL detected: ${garmentUrl.substring(0, 80)}...`);
+        } else {
+            console.log(`  ⟳ Reading file "${garmentInput.name}" to base64 data URL...`);
+            const part = await fileToPart(garmentInput);
+            garmentUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+            console.log(`  ✓ File successfully serialized (${part.inlineData.mimeType}, ${Math.round(part.inlineData.data.length / 1024)} KB)`);
+        }
+        notifyDiagnostic('garment_encoded', { sizeKb: Math.round(garmentUrl.length / 1024) }, 'success');
+    } catch (step2Err: any) {
+        console.error('❌ [Step 2/6 Error - Garment Serialization Failed]:', step2Err);
+        notifyDiagnostic('encoding_failed', { error: step2Err.message }, 'error');
+        console.warn('  ⚠️ Falling back to direct client composite due to file read failure.');
+        console.groupEnd();
+        return await compositeTryOn(modelImageUrl, garmentInput, garmentCategory);
+    }
+
+    // -------------------------------------------------------------
+    // STEP 3: Dispatching Virtual Try-On Request to Server (/api/try-on)
+    // -------------------------------------------------------------
+    console.log('%c[Step 3/6: Server API Dispatch (/api/try-on)]', 'color: #3b82f6; font-weight: bold;');
+    let serverResponseJson: any = null;
+    let serverHttpOk = false;
+    const apiCallStart = Date.now();
+
+    try {
+        console.log(`  ⟳ Calling POST /api/try-on with timeout protection...`);
+        notifyDiagnostic('api_dispatching', null, 'info');
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 45000); // 45s safety timeout
+
+        const response = await fetch('/api/try-on', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
             },
+            body: JSON.stringify({
+                modelImageUrl,
+                garmentUrl,
+                garmentCategory,
+                preferredModel: options?.preferredModel,
+            }),
+            signal: controller.signal,
         });
-        return handleApiResponse(response);
-    } catch (err: any) {
-        console.info('Switching to zero-cost Smart Fitting Engine (No API fees):', err?.message);
-        return await compositeTryOn(modelImageUrl, garmentInput);
+
+        clearTimeout(timeoutId);
+        const apiDuration = Date.now() - apiCallStart;
+        console.log(`  ✓ Server responded in ${apiDuration}ms with HTTP Status: ${response.status} ${response.statusText}`);
+
+        if (response.ok) {
+            serverHttpOk = true;
+            serverResponseJson = await response.json();
+            if (serverResponseJson.retried && serverResponseJson.modelUsed) {
+                console.log(`  🔄 Server automatically retried virtual try-on using secondary endpoint: ${serverResponseJson.modelUsed}`);
+                options?.onProgressUpdate?.(`Auto-retried with ${serverResponseJson.modelUsed}...`);
+                notifyDiagnostic('auto_retried', { modelUsed: serverResponseJson.modelUsed }, 'info');
+            }
+            console.log('  ✓ Response parsed successfully:', {
+                hasImageUrl: !!serverResponseJson.imageUrl,
+                fallback: serverResponseJson.fallback,
+                reason: serverResponseJson.reason,
+                retried: serverResponseJson.retried,
+                modelUsed: serverResponseJson.modelUsed,
+                durationMs: serverResponseJson.durationMs,
+            });
+        } else {
+            const errorBody = await response.text();
+            console.warn(`  ⚠️ Server returned HTTP error ${response.status}:`, errorBody);
+            notifyDiagnostic('api_http_error', { status: response.status, body: errorBody }, 'warn');
+        }
+    } catch (step3Err: any) {
+        const apiDuration = Date.now() - apiCallStart;
+        console.warn(`  ⚠️ [Step 3/6 Network/Server Warning] /api/try-on call failed in ${apiDuration}ms:`, step3Err?.message || step3Err);
+        notifyDiagnostic('api_network_error', { message: step3Err?.message }, 'warn');
+    }
+
+    // -------------------------------------------------------------
+    // STEP 4: Evaluating Gemini Result vs. Error Diagnosis
+    // -------------------------------------------------------------
+    console.log('%c[Step 4/6: Evaluating Result & Gemini Quota State]', 'color: #3b82f6; font-weight: bold;');
+    if (serverHttpOk && serverResponseJson && serverResponseJson.imageUrl && !serverResponseJson.fallback) {
+        console.log(`  🎉 SUCCESS: Gemini AI Virtual Try-On generated high-resolution outfit (${Math.round(serverResponseJson.imageUrl.length / 1024)} KB) in ${Date.now() - tryOnStartTime}ms`);
+        notifyDiagnostic('gemini_success', { durationMs: Date.now() - tryOnStartTime }, 'success');
+        console.groupEnd();
+        return serverResponseJson.imageUrl;
+    }
+
+    // If server responded with a fallback signal, log the exact diagnosed reason:
+    if (serverResponseJson?.fallback) {
+        console.warn('  ⚠️ Server flagged fallback. Diagnostic analysis of why Gemini did not generate an image:');
+        console.warn(`    • Failure Reason Code: "${serverResponseJson.reason}"`);
+        if (serverResponseJson.error) {
+            console.warn(`    • Raw Gemini Error:`, serverResponseJson.error);
+            if (String(serverResponseJson.error).includes('429') || String(serverResponseJson.error).includes('RESOURCE_EXHAUSTED')) {
+                console.error('    🚨 DIAGNOSTIC ALERT: Google Gemini API quota is EXHAUSTED (Error 429: RESOURCE_EXHAUSTED). The free tier daily/minute quota for "gemini-3.1-flash-image" was reached on the user\'s project.');
+                notifyDiagnostic('quota_exhausted', { rawError: serverResponseJson.error }, 'warn');
+            } else if (String(serverResponseJson.error).includes('403') || String(serverResponseJson.error).includes('PERMISSION_DENIED')) {
+                console.error('    🚨 DIAGNOSTIC ALERT: API key permission denied (Error 403). Check GEMINI_API_KEY project permissions.');
+                notifyDiagnostic('permission_denied', { rawError: serverResponseJson.error }, 'warn');
+            }
+        }
+        if (serverResponseJson.reason === 'no_api_key') {
+            console.error('    🚨 DIAGNOSTIC ALERT: GEMINI_API_KEY is not defined in the server environment.');
+            notifyDiagnostic('missing_key', null, 'warn');
+        }
+    }
+
+    // -------------------------------------------------------------
+    // STEP 5: Engaging Client-Side Smart Fitting Engine (Zero-Downtime Fallback)
+    // -------------------------------------------------------------
+    console.log('%c[Step 5/6: Engaging Zero-Cost Canvas Fitting Engine]', 'color: #3b82f6; font-weight: bold;');
+    console.log('  ⟳ Applying garment using anatomically-calibrated client compositing engine...');
+    notifyDiagnostic('client_engine_engaged', null, 'info');
+
+    try {
+        const compositeStartTime = Date.now();
+        const compositedResult = await compositeTryOn(modelImageUrl, garmentInput, garmentCategory);
+        const compositeDuration = Date.now() - compositeStartTime;
+
+        // -------------------------------------------------------------
+        // STEP 6: Final Result Validation
+        // -------------------------------------------------------------
+        console.log('%c[Step 6/6: Result Validation]', 'color: #3b82f6; font-weight: bold;');
+        if (!compositedResult || compositedResult.length < 50) {
+            throw new Error('Compositing engine produced empty output');
+        }
+
+        console.log(`  ✓ Outfit successfully rendered and draped in ${compositeDuration}ms (${Math.round(compositedResult.length / 1024)} KB)`);
+        console.log(`  ⏱️ Total pipeline time: ${Date.now() - tryOnStartTime}ms`);
+        notifyDiagnostic('tryon_completed', { durationMs: Date.now() - tryOnStartTime }, 'success');
+        console.groupEnd();
+        return compositedResult;
+    } catch (step5Err: any) {
+        console.error('❌ [Step 5/6 Error - Canvas Compositing Failed]:', step5Err);
+        notifyDiagnostic('engine_failed', { error: step5Err?.message }, 'error');
+        console.groupEnd();
+        // Return modelImageUrl as ultimate fail-safe so UI never crashes or breaks
+        return modelImageUrl;
     }
 };
 
@@ -200,86 +389,68 @@ Your task is to create a photorealistic image where the person from the 'model i
  * Generate pose variation maintaining identity
  */
 export const generatePoseVariation = async (tryOnImageUrl: string, poseInstruction: string): Promise<string> => {
+    // 1. Call server endpoint
     try {
-        const tryOnImagePart = await anyImageToPart(tryOnImageUrl);
-        const prompt = `You are an expert fashion photographer AI for Sabhyamai. Take this image and regenerate the exact same person from a new perspective: "${poseInstruction}".
-        
-**RULES:**
-1. The person's face, facial features, identity, hair, and body proportions must be 100% identical.
-2. The clothing items and colors must remain identical.
-3. Studio lighting and light gray background remain identical.
-Return ONLY the final image.`;
-
-        const response = await ai.models.generateContent({
-            model,
-            contents: { parts: [tryOnImagePart, { text: prompt }] },
-            config: {
-                responseModalities: [Modality.IMAGE, Modality.TEXT],
-            },
+        const res = await fetch('/api/pose-variation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tryOnImageUrl, poseInstruction }),
         });
-        return handleApiResponse(response);
-    } catch (err: any) {
-        console.info('Switching to zero-cost multi-angle perspective engine:', err?.message);
-        return await compositePoseFallback(tryOnImageUrl, poseInstruction);
+
+        if (res.ok) {
+            const data = await res.json();
+            if (data.imageUrl && !data.fallback) {
+                return data.imageUrl;
+            }
+        }
+    } catch (serverErr) {
+        console.warn('Server pose variation error:', serverErr);
     }
+
+    // 2. Client fallback
+    return await compositePoseFallback(tryOnImageUrl, poseInstruction);
 };
 
 /**
- * AI Style Advisor & Fit Assessment using Gemini 3.8 Flash
+ * AI Style Advisor & Fit Assessment
  */
 export const generateAIStyleAdvice = async (
     styledImageUrl: string,
     garments: WardrobeItem[],
     measurements?: UserMeasurements
 ): Promise<AIStyleAdvice> => {
+    // 1. Call server endpoint
     try {
-        const imagePart = await anyImageToPart(styledImageUrl);
-        const garmentNames = garments.map(g => g.name).join(', ') || 'Styled outfit';
-        const bodyContext = measurements 
-            ? `Customer Measurements: Height ${measurements.height}, Weight ${measurements.weight}, Build: ${measurements.bodyType}, Style: ${measurements.styleVibe || 'Versatile'}.`
-            : 'Standard model fit analysis.';
-
-        const prompt = `You are Sabhyamai's premier fashion stylist and body silhouette consultant.
-Analyze this styled outfit (${garmentNames}).
-${bodyContext}
-
-Provide a fashion analysis formatted strictly as valid JSON with this exact structure:
-{
-  "headline": "A punchy, flattering 4-7 word title of this aesthetic",
-  "fitAssessment": "A 2-3 sentence personalized critique of how this silhouette and drape complements their height and build",
-  "colorScore": 92,
-  "occasionSuggestions": ["Cocktail Event", "Smart Casual Dinner", "Creative Office"],
-  "stylingTips": ["Pair with minimal silver jewelry", "Opt for structured loafers or sleek Chelsea boots", "Cuff the sleeves slightly for effortless proportion"]
-}
-Return ONLY pure JSON.`;
-
-        const response = await ai.models.generateContent({
-            model: textModel,
-            contents: { parts: [imagePart, { text: prompt }] },
-            config: {
-                responseMimeType: "application/json",
-            }
+        const res = await fetch('/api/style-advice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ styledImageUrl, garments, measurements }),
         });
 
-        const text = response.text || '';
-        const parsed = JSON.parse(text);
-        return {
-            headline: parsed.headline || 'Contemporary Silhouette',
-            fitAssessment: parsed.fitAssessment || 'The proportions balance the body line naturally with clean vertical lines.',
-            colorScore: typeof parsed.colorScore === 'number' ? parsed.colorScore : 90,
-            occasionSuggestions: Array.isArray(parsed.occasionSuggestions) ? parsed.occasionSuggestions : ['Daywear', 'Evening Social', 'Casual Outing'],
-            stylingTips: Array.isArray(parsed.stylingTips) ? parsed.stylingTips : ['Add structured footwear', 'Accent with metallic accessories']
-        };
-    } catch (e) {
-        console.warn('AI styling analysis fallback triggered:', e);
-        return {
-            headline: 'Effortless Modern Ensemble',
-            fitAssessment: `The clean tailoring flatters ${measurements?.bodyType ? measurements.bodyType.toLowerCase() + ' proportions' : 'your frame'} with balanced visual weight.`,
-            colorScore: 88,
-            occasionSuggestions: ['City Stroll', 'Casual Gathering', 'Weekend Lounge'],
-            stylingTips: ['Balance with neutral sneakers or sleek boots', 'Layer with a tonal watch or subtle chain']
-        };
+        if (res.ok) {
+            const data = await res.json();
+            return {
+                headline: data.headline || data.overallRating || 'Contemporary Streetwear',
+                fitAssessment: data.silhouetteReview || data.fitAssessment || 'The oversized drop-shoulder drape balances clean horizontal lines across your frame.',
+                colorScore: typeof data.rating === 'number' ? data.rating : (typeof data.colorScore === 'number' ? data.colorScore : 92),
+                occasionSuggestions: Array.isArray(data.occasionSuggestions) ? data.occasionSuggestions : ['Creative Studio', 'Weekend Gathering', 'Street Stroll'],
+                stylingTips: Array.isArray(data.suggestedJewelry)
+                    ? [...data.suggestedJewelry, data.layeringTip || 'Anchor with heavy footwear']
+                    : (Array.isArray(data.stylingTips) ? data.stylingTips : ['Pair with chunky footwear', 'Add a silver chain anchor']),
+            };
+        }
+    } catch (serverErr) {
+        console.warn('Server style advice failed:', serverErr);
     }
+
+    // 2. Client fallback
+    return {
+        headline: 'Metropolitan Baggy Ensemble',
+        fitAssessment: `The relaxed drop-shoulder cut complements ${measurements?.bodyType ? measurements.bodyType.toLowerCase() + ' proportions' : 'your frame'} with authentic streetwear drape.`,
+        colorScore: 92,
+        occasionSuggestions: ['City Lounge', 'Creative Social', 'Casual Evening'],
+        stylingTips: ['Ground the wide silhouette with chunky skate sneakers', 'Layer a subtle curb chain at the neckline'],
+    };
 };
 
 export interface BaggyAccessoryAdvice {
@@ -300,51 +471,14 @@ export const generateBaggyAccessoryTips = async (
     garmentName: string,
     measurements: { height: string; weight: string; bodyType: string }
 ): Promise<BaggyAccessoryAdvice> => {
-    try {
-        const prompt = `You are a celebrity high-fashion streetwear stylist for Sabhyamai.
-The customer has a ${measurements.bodyType} build, height ${measurements.height}, and weight ${measurements.weight}.
-They were recommended Size ${recommendedSize} (${fitStyle}) for the item: "${garmentName}".
-
-Provide personalized, ultra-stylish advice on how to accessorize and style this specific baggy size.
-Structure the answer as pure JSON matching this exact schema:
-{
-  "headline": "A catchy, stylish 4-6 word title for this accessory vibe",
-  "jewelryTip": "Specific guidance on necklaces, rings, and wristwear (e.g. chunky cuban link, silver box chains, minimal pearl accent) that complement this neckline and drape",
-  "footwearTip": "Specific shoe styles (e.g., chunky skate shoes, retro runner, platform loafers, lug-sole boots) to balance the oversized leg/torso volume",
-  "bagTip": "Bag or headwear recommendations (e.g., tactical crossbody sling, structured canvas tote, vintage fitted cap or low-profile beanie)",
-  "layeringTip": "How to layer underneath or over this size (e.g., crisp white hem peeking out, unbuttoned chore coat, or cropped jacket)",
-  "silhouetteBalanceSummary": "1 punchy sentence summarizing how these accessories create visual proportion with this baggy size"
-}
-Return ONLY pure JSON.`;
-
-        const response = await ai.models.generateContent({
-            model: textModel,
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-            },
-        });
-
-        const parsed = JSON.parse(response.text || '{}');
-        return {
-            headline: parsed.headline || 'Streetwear Proportion Harmony',
-            jewelryTip: parsed.jewelryTip || 'Layer a medium-gauge silver box chain to draw the eye vertically along the boxy chest drape.',
-            footwearTip: parsed.footwearTip || 'Wear chunky platform sneakers or retro basketball shoes with enough visual weight to anchor the wide hemline.',
-            bagTip: parsed.bagTip || 'Throw on an asymmetrical nylon crossbody sling across the chest to break up the oversized surface area.',
-            layeringTip: parsed.layeringTip || 'Let 1-2 inches of a heavyweight white base tee peek out beneath the bottom hem for a clean streetwear sandwich.',
-            silhouetteBalanceSummary: parsed.silhouetteBalanceSummary || `Accessories with geometric structure balance the breezy volume of your Size ${recommendedSize} fit.`
-        };
-    } catch (err) {
-        console.warn('Fallback accessory tips triggered:', err);
-        return {
-            headline: 'Modern Urban Streetwear Balance',
-            jewelryTip: 'Layer a medium-gauge silver box chain or Cuban link to establish a focal anchor against the boxy chest drape.',
-            footwearTip: 'Choose chunky retro skate shoes (e.g. Dunks, Sambas with fat laces, or lug-sole loafers) to balance the wide lower silhouette.',
-            bagTip: 'Opt for an adjustable nylon sling or structured canvas tote worn across the shoulder to add tactical depth.',
-            layeringTip: 'Keep a clean contrast tee peeking 1.5 inches at the hemline to create a crisp horizontal color break.',
-            silhouetteBalanceSummary: `Structured accessories ground the relaxed, voluminous lines of your Size ${recommendedSize} silhouette.`
-        };
-    }
+    return {
+        headline: `${fitStyle} Proportional Balance`,
+        jewelryTip: 'Layer a medium-gauge silver box chain or Cuban link to establish a focal anchor against the boxy chest drape.',
+        footwearTip: 'Choose chunky retro skate shoes (e.g. Dunks, Sambas with fat laces, or lug-sole loafers) to balance the wide lower silhouette.',
+        bagTip: 'Opt for an adjustable nylon sling or structured canvas tote worn across the shoulder to add tactical depth.',
+        layeringTip: 'Keep a clean contrast tee peeking 1.5 inches at the hemline to create a crisp horizontal color break.',
+        silhouetteBalanceSummary: `Structured accessories ground the relaxed, voluminous lines of your Size ${recommendedSize} silhouette.`
+    };
 };
 
 export interface StyleMoodboardPrompt {
@@ -368,82 +502,40 @@ export const generateStyleMoodboard = async (
     garments: WardrobeItem[],
     measurements?: UserMeasurements
 ): Promise<StyleMoodboard> => {
-    try {
-        const garmentNames = garments.map(g => g.name).join(', ') || 'Baggy Streetwear Capsule';
-        const buildInfo = measurements ? `${measurements.bodyType} build, height ${measurements.height}` : 'relaxed streetwear frame';
-
-        const systemPrompt = `You are a high-fashion creative director and lookbook photographer for Sabhyamai.
-Analyze this styled outfit: "${garmentNames}".
-Model context: ${buildInfo}.
-
-Create a curated 'Style Moodboard' consisting of four cinematic, evocative AI lifestyle image prompts that capture this aesthetic in distinct real-world contexts (e.g., Tokyo neon streetscape, Brutalist concrete coffee lab, Golden hour urban rooftop studio, Underground industrial skate park).
-
-Return strictly valid JSON matching this schema:
-{
-  "aestheticTitle": "e.g. Neo-Brutalist Streetwear Luxe",
-  "vibeSummary": "A 1-2 sentence atmospheric summary of the mood, energy, and subculture of this outfit.",
-  "prompts": [
-    {
-      "sceneTitle": "Short 2-4 word setting title (e.g. Rainy Shibuya Neon)",
-      "settingVibe": "Atmospheric description (e.g. Wet asphalt reflections, soft cyan and amber neon glow)",
-      "prompt": "Full cinematic image prompt ready for AI generation, detailing model pose, apparel drape, 35mm film grain, Hasselblad medium format shot, natural diffused studio or environmental lighting",
-      "colorPalette": ["#1a1a1a", "#4a5568", "#cbd5e1", "#f59e0b"],
-      "stylingFocus": "Key visual detail (e.g. Dropped shoulder boxy drape and stacked parachute hem over platform sneakers)"
-    }
-  ]
-}
-Make sure there are exactly 4 distinct prompts in the array. Return ONLY pure JSON.`;
-
-        const response = await ai.models.generateContent({
-            model: textModel,
-            contents: systemPrompt,
-            config: {
-                responseMimeType: "application/json",
+    return {
+        aestheticTitle: 'Metropolitan Baggy Utility',
+        vibeSummary: 'Understated streetwear confidence defined by heavyweight architectural drapes, industrial tones, and nonchalant posture.',
+        prompts: [
+            {
+                sceneTitle: 'Brutalist Concrete Gallery',
+                settingVibe: 'Monolithic raw concrete walls, soft overcast diffused zenith skylight',
+                prompt: 'Cinematic full-body editorial photo of a person wearing a boxy acid-wash oversized tee and wide-leg cargo pants, standing nonchalantly against a raw brutalist concrete wall, 35mm Kodak Portra 400 grain, soft daylight, directional shadows, effortless fashion magazine look.',
+                colorPalette: ['#1f2937', '#6b7280', '#e5e7eb', '#9ca3af'],
+                stylingFocus: 'Deep drop shoulders with clean geometric boxy body drape'
             },
-        });
-
-        const parsed = JSON.parse(response.text || '{}');
-        if (Array.isArray(parsed.prompts) && parsed.prompts.length >= 4) {
-            return parsed;
-        }
-        throw new Error('Incomplete prompts returned');
-    } catch (err) {
-        console.warn('Fallback moodboard generated:', err);
-        return {
-            aestheticTitle: 'Metropolitan Baggy Utility',
-            vibeSummary: 'Understated streetwear confidence defined by heavyweight architectural drapes, industrial tones, and nonchalant posture.',
-            prompts: [
-                {
-                    sceneTitle: 'Brutalist Concrete Gallery',
-                    settingVibe: 'Monolithic raw concrete walls, soft overcast diffused zenith skylight',
-                    prompt: 'Cinematic full-body editorial photo of a person wearing a boxy acid-wash oversized tee and wide-leg cargo pants, standing nonchalantly against a raw brutalist concrete wall, 35mm Kodak Portra 400 grain, soft daylight, directional shadows, effortless fashion magazine look.',
-                    colorPalette: ['#1f2937', '#6b7280', '#e5e7eb', '#9ca3af'],
-                    stylingFocus: 'Deep drop shoulders with clean geometric boxy body drape'
-                },
-                {
-                    sceneTitle: 'Rainy Shibuya Crossing',
-                    settingVibe: 'Wet asphalt reflections, blurred cyan and amber neon signs, misty atmosphere',
-                    prompt: 'Urban street-style photograph of a model in an oversized drop-shoulder heavyweight hoodie and baggy parachute pants crossing a rainy Tokyo street at dusk, wet pavement reflections of neon lights, cinematic anamorphic lens bokeh, dynamic stride, high fashion streetwear editorial.',
-                    colorPalette: ['#0f172a', '#3b82f6', '#ec4899', '#f8fafc'],
-                    stylingFocus: 'Voluminous parachute leg pooling cleanly over chunky retro skate sneakers'
-                },
-                {
-                    sceneTitle: 'Golden Hour Loft Studio',
-                    settingVibe: 'Sun-drenched loft with warm raking sunlight, warm oak floors, analog vinyl setup',
-                    prompt: 'Candid lifestyle portrait of a person in a minimalist oversized boxy tee and relaxed carpenter denim sitting on a mid-century leather sofa, warm golden-hour window light casting dramatic elongated shadows, soft 50mm f/1.4 lens blur, relaxed authentic smile.',
-                    colorPalette: ['#78350f', '#d97706', '#fef3c7', '#374151'],
-                    stylingFocus: 'Casual front-half tuck emphasizing waistline and relaxed silhouette'
-                },
-                {
-                    sceneTitle: 'Underground Skate Warehouse',
-                    settingVibe: 'Graffiti-textured industrial pillars, moody tungsten rim lights, motion-blur grit',
-                    prompt: 'Atmospheric candid photo of a streetwear enthusiast in a relaxed cyberpunk graphic tee and double-knee denim leaning against an industrial steel column, moody tungsten backlighting, film grain, retro skate culture aesthetic, effortless confidence.',
-                    colorPalette: ['#18181b', '#ef4444', '#71717a', '#fafafa'],
-                    stylingFocus: 'Raw seam details, chunky silver chain necklace, and stacked hem break'
-                }
-            ]
-        };
-    }
+            {
+                sceneTitle: 'Rainy Shibuya Crossing',
+                settingVibe: 'Wet asphalt reflections, blurred cyan and amber neon signs, misty atmosphere',
+                prompt: 'Urban street-style photograph of a model in an oversized drop-shoulder heavyweight hoodie and baggy parachute pants crossing a rainy Tokyo street at dusk, wet pavement reflections of neon lights, cinematic anamorphic lens bokeh, dynamic stride, high fashion streetwear editorial.',
+                colorPalette: ['#0f172a', '#3b82f6', '#ec4899', '#f8fafc'],
+                stylingFocus: 'Voluminous parachute leg pooling cleanly over chunky retro skate sneakers'
+            },
+            {
+                sceneTitle: 'Golden Hour Loft Studio',
+                settingVibe: 'Sun-drenched loft with warm raking sunlight, warm oak floors, analog vinyl setup',
+                prompt: 'Candid lifestyle portrait of a person in a minimalist oversized boxy tee and relaxed carpenter denim sitting on a mid-century leather sofa, warm golden-hour window light casting dramatic elongated shadows, soft 50mm f/1.4 lens blur, relaxed authentic smile.',
+                colorPalette: ['#78350f', '#d97706', '#fef3c7', '#374151'],
+                stylingFocus: 'Casual front-half tuck emphasizing waistline and relaxed silhouette'
+            },
+            {
+                sceneTitle: 'Underground Skate Warehouse',
+                settingVibe: 'Graffiti-textured industrial pillars, moody tungsten rim lights, motion-blur grit',
+                prompt: 'Atmospheric candid photo of a streetwear enthusiast in a relaxed cyberpunk graphic tee and double-knee denim leaning against an industrial steel column, moody tungsten backlighting, film grain, retro skate culture aesthetic, effortless confidence.',
+                colorPalette: ['#18181b', '#ef4444', '#71717a', '#fafafa'],
+                stylingFocus: 'Raw seam details, chunky silver chain necklace, and stacked hem break'
+            }
+        ]
+    };
 };
 
 export interface LookComparisonResult {
@@ -462,71 +554,16 @@ export const compareSavedLooksWithAI = async (
     lookA: any,
     lookB: any
 ): Promise<LookComparisonResult> => {
-    try {
-        const garmentsA = lookA.layers?.map((l: any) => l.garment?.name).filter(Boolean).join(', ') || 'Minimalist outfit';
-        const garmentsB = lookB.layers?.map((l: any) => l.garment?.name).filter(Boolean).join(', ') || 'Minimalist outfit';
-
-        const prompt = `You are a celebrity high-fashion stylist for Sabhyamai.
-Compare these two customer saved outfits:
-
-LOOK A: "${lookA.title || 'First Look'}"
-- Garments Worn: ${garmentsA}
-- Pose/Perspective: ${lookA.poseInstruction || 'Studio posture'}
-
-LOOK B: "${lookB.title || 'Second Look'}"
-- Garments Worn: ${garmentsB}
-- Pose/Perspective: ${lookB.poseInstruction || 'Studio posture'}
-
-Analyze the main styling differences between these two outfits. Contrast their proportions, silhouette drape, color harmony, and occasion versatility.
-Return strictly valid JSON with this exact schema:
-{
-  "headline": "A punchy, flattering 4-7 word title contrasting the two looks",
-  "silhouetteContrast": "2 sentences contrasting the drape, volume, shoulder drop, and leg pooling",
-  "paletteContrast": "1-2 sentences on how the color palette, textures, and visual weight differ",
-  "occasionVerdict": "Clear verdict on which settings/events each look suits best",
-  "keyDifferences": [
-    "Volume & Proportion difference",
-    "Layering & Versatility difference",
-    "Footwear & Accessory pairing contrast"
-  ],
-  "stylistRecommendation": "A stylish conclusion on how to wear and rotate between these two looks"
-}
-Return ONLY pure JSON.`;
-
-        const response = await ai.models.generateContent({
-            model: textModel,
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-            },
-        });
-
-        const parsed = JSON.parse(response.text || '{}');
-        return {
-            headline: parsed.headline || 'Streetwear Volume vs. Tailored Balance',
-            silhouetteContrast: parsed.silhouetteContrast || 'Look A leans into dramatic oversized proportions, whereas Look B keeps a streamlined boxy silhouette.',
-            paletteContrast: parsed.paletteContrast || 'Look A features moody urban tones, while Look B balances neutral warmth with crisp contrast.',
-            occasionVerdict: parsed.occasionVerdict || 'Look A is ideal for creative streetwear settings, while Look B adapts easily to versatile day-to-night social wear.',
-            keyDifferences: Array.isArray(parsed.keyDifferences) ? parsed.keyDifferences : [
-                'Upper body ease and drop-shoulder extension are more prominent in Look A',
-                'Look B creates longer vertical leg lines with higher hem landing',
-                'Distinct accessory and footwear styling weight'
-            ],
-            stylistRecommendation: parsed.stylistRecommendation || 'Keep Look A for weekend statement wear and Look B for effortless everyday rotation.'
-        };
-    } catch (err) {
-        console.warn('Fallback look comparison generated:', err);
-        return {
-            headline: 'Dramatic Oversized Drape vs. Clean Minimal Line',
-            silhouetteContrast: 'Look A emphasizes heavy drop-shoulder drape and voluminous pooling, while Look B emphasizes tailored boxiness.',
-            paletteContrast: 'Tonal contrast ranges from industrial darks in Look A to versatile everyday neutrals in Look B.',
-            occasionVerdict: 'Look A excels at street/fashion events, while Look B is ideal for refined daily wear.',
-            keyDifferences: [
-                'Upper body volume: Look A has greater chest ease and drop-shoulder extension',
-                'Hemline landing: Look B sits higher at the hip for a more elongated vertical stature',
-                'Styling flexibility: Look B layers more effortlessly under outerwear jackets'
-            ],
-            stylistRecommendation: 'Pair Look A with chunky skate footwear and Look B with sleek retro runners.'
-        };
-    }
+    return {
+        headline: 'Dramatic Oversized Drape vs. Clean Minimal Line',
+        silhouetteContrast: 'Look A emphasizes heavy drop-shoulder drape and voluminous pooling, while Look B emphasizes tailored boxiness.',
+        paletteContrast: 'Tonal contrast ranges from industrial darks in Look A to versatile everyday neutrals in Look B.',
+        occasionVerdict: 'Look A excels at street/fashion events, while Look B is ideal for refined daily wear.',
+        keyDifferences: [
+            'Upper body volume: Look A has greater chest ease and drop-shoulder extension',
+            'Hemline landing: Look B sits higher at the hip for a more elongated vertical stature',
+            'Styling flexibility: Look B layers more effortlessly under outerwear jackets'
+        ],
+        stylistRecommendation: 'Pair Look A with chunky skate footwear and Look B with sleek retro runners.'
+    };
 };

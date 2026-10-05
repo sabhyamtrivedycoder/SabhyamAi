@@ -5,15 +5,12 @@
 
 import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UploadCloudIcon, SlidersIcon, UserIcon } from './icons';
 import { Compare } from './ui/compare';
 import { generateModelImage } from '../services/geminiService';
 import Spinner from './Spinner';
 import { getFriendlyErrorMessage } from '../lib/utils';
 import { UserMeasurements, UserProfile } from '../types';
 import FitQuestionsModal from './FitQuestionsModal';
-
-import Logo from './Logo';
 
 interface StartScreenProps {
   onModelFinalized: (modelUrl: string, measurements?: UserMeasurements) => void;
@@ -74,7 +71,6 @@ export const StartScreen: React.FC<StartScreenProps> = ({
     reader.onload = (e) => {
       const dataUrl = e.target?.result as string;
       setUserImageUrl(dataUrl);
-      // Open questions modal to collect height, weight, body type
       setIsQuestionsModalOpen(true);
     };
     reader.readAsDataURL(file);
@@ -91,7 +87,6 @@ export const StartScreen: React.FC<StartScreenProps> = ({
     setIsQuestionsModalOpen(false);
 
     if (mode === 'exact_photo' && userImageUrl) {
-      // 100% Real Face Guarantee - use exact uploaded photo directly!
       onModelFinalized(userImageUrl, fitData);
       return;
     }
@@ -118,9 +113,9 @@ export const StartScreen: React.FC<StartScreenProps> = ({
   };
 
   const screenVariants = {
-    initial: { opacity: 0, x: -20 },
-    animate: { opacity: 1, x: 0 },
-    exit: { opacity: 0, x: 20 },
+    initial: { opacity: 0, y: 8 },
+    animate: { opacity: 1, y: 0 },
+    exit: { opacity: 0, y: -8 },
   };
 
   return (
@@ -129,127 +124,126 @@ export const StartScreen: React.FC<StartScreenProps> = ({
         {!userImageUrl ? (
           <motion.div
             key="uploader"
-            className="w-full max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-12"
+            className="w-full max-w-6xl mx-auto flex flex-col lg:flex-row items-center justify-between gap-12 lg:gap-16 pt-16 sm:pt-20 pb-12"
             variants={screenVariants}
             initial="initial"
             animate="animate"
             exit="exit"
-            transition={{ duration: 0.4, ease: 'easeInOut' }}
+            transition={{ duration: 0.5, ease: 'easeOut' }}
           >
-            <div className="lg:w-1/2 flex flex-col items-center lg:items-start text-center lg:text-left">
-              <div className="max-w-lg">
-                <div className="flex items-center justify-between w-full mb-5">
-                  <Logo size="md" />
-                  {currentUser ? (
-                    <span className="text-xs text-gray-500 font-medium bg-gray-100 px-2.5 py-1 rounded-full">
-                      {currentUser.name}
-                    </span>
-                  ) : onPromptAuth ? (
-                    <button
-                      type="button"
-                      onClick={onPromptAuth}
-                      className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-100 text-gray-700 flex items-center gap-1.5 transition-colors"
-                    >
-                      <UserIcon className="w-3.5 h-3.5" />
-                      <span>Sign In / Sign Up</span>
-                    </button>
-                  ) : null}
-                </div>
-
-                <h1 className="text-5xl md:text-6xl font-serif font-bold text-gray-900 leading-tight">
-                  Your Exact Face. Your Perfect Fit.
+            {/* Left Column: Neurapex Typographic Hero */}
+            <div className="lg:w-1/2 flex flex-col items-start text-left">
+              <div className="max-w-xl">
+                {/* Main Hero Headline matching Neurapex exact serif & italic style */}
+                <h1 className="text-5xl sm:text-6xl md:text-7xl font-serif text-[#111827] tracking-tight leading-[1.08] select-none">
+                  <span className="block font-normal">Unifying</span>
+                  <span className="block font-normal italic text-[#111827]">Fashion Intelligence</span>
                 </h1>
-                <p className="mt-4 text-lg text-gray-600">
-                  Upload a photo to see baggy streetwear, oversized tees, and designer styles on your personal AI model. 100% facial accuracy guaranteed.
+
+                {/* Subtitle matching Neurapex quiet slate prose with highlighted anchor */}
+                <p className="mt-8 text-base sm:text-lg text-[#4b5563] leading-relaxed font-sans font-normal">
+                  We&apos;re building generative fashion AI that can reason across your exact face, physical measurements, and garment drape physics. Instead of a patchwork of siloed sizing charts and guesswork, now ask{' '}
+                  <strong className="font-semibold text-[#111827]">one model</strong> to make sense of oversized streetwear, boxy cuts, and tailored layers on your real body.
                 </p>
 
-                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                  <span className="px-2 py-0.5 rounded bg-gray-100 font-medium">✓ 1:1 Face Preservation</span>
-                  <span className="px-2 py-0.5 rounded bg-gray-100 font-medium">✓ Height & Weight Calibration</span>
-                  <span className="px-2 py-0.5 rounded bg-gray-100 font-medium">✓ Baggy & Streetwear Fitting</span>
-                </div>
-
-                <hr className="my-7 border-gray-200" />
-
-                <div className="flex flex-col items-center lg:items-start w-full gap-3">
+                {/* Neurapex Action Row: Soft elevated pill + Underline text link */}
+                <div className="mt-9 flex items-center gap-6">
                   <label
                     htmlFor="image-upload-start"
-                    className="w-full relative flex items-center justify-center px-8 py-3.5 text-base font-semibold text-white bg-gray-900 rounded-xl cursor-pointer group hover:bg-gray-800 active:scale-98 transition-all shadow-md"
+                    className="inline-flex items-center justify-center px-7 py-3 rounded-2xl bg-white text-[#374151] hover:text-[#111827] border border-black/[0.08] shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:shadow-[0_12px_40px_rgb(0,0,0,0.1)] transition-all font-medium text-sm cursor-pointer active:scale-98 select-none"
                   >
-                    <UploadCloudIcon className="w-5 h-5 mr-3" />
-                    Upload Photo & Start Fitting
+                    Try Fitting
                   </label>
-                  <input
-                    id="image-upload-start"
-                    type="file"
-                    className="hidden"
-                    accept="image/png, image/jpeg, image/webp, image/avif, image/heic, image/heif"
-                    onChange={handleFileChange}
-                  />
-                  <p className="text-gray-500 text-xs">
-                    Full-body or portrait photo. We will ask a few fit questions (height & weight) to calibrate your virtual proportions.
-                  </p>
 
-                  <div className="pt-2 flex items-center gap-1.5 text-xs text-gray-500">
-                    <span>Need support or have feedback?</span>
-                    {onOpenContact ? (
-                      <button
-                        type="button"
-                        onClick={onOpenContact}
-                        className="text-purple-700 hover:text-purple-950 font-semibold underline"
-                      >
-                        Contact Us (sabhyamtrivedy@gmail.com)
-                      </button>
-                    ) : (
-                      <a
-                        href="mailto:sabhyamtrivedy@gmail.com"
-                        className="text-purple-700 hover:text-purple-950 font-semibold underline"
-                      >
-                        Contact Us: sabhyamtrivedy@gmail.com
-                      </a>
-                    )}
-                  </div>
-                  {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const el = document.getElementById('interactive-preview');
+                      el?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="text-sm text-[#4b5563] underline underline-offset-4 hover:text-[#111827] transition-colors"
+                  >
+                    See how it works
+                  </button>
                 </div>
+
+                <input
+                  id="image-upload-start"
+                  type="file"
+                  className="hidden"
+                  accept="image/png, image/jpeg, image/webp, image/avif, image/heic, image/heif"
+                  onChange={handleFileChange}
+                />
+
+                {/* Micro metadata row */}
+                <div className="mt-8 pt-6 border-t border-black/[0.06] flex items-center gap-2 text-xs text-[#6b7280]">
+                  <span>100% Real Face Preservation</span>
+                  <span aria-hidden="true">·</span>
+                  <span>Biometric Proportion Calibration</span>
+                  <span aria-hidden="true">·</span>
+                  {onOpenContact ? (
+                    <button
+                      type="button"
+                      onClick={onOpenContact}
+                      className="underline hover:text-[#111827]"
+                    >
+                      sabhyamtrivedy@gmail.com
+                    </button>
+                  ) : (
+                    <span>sabhyamtrivedy@gmail.com</span>
+                  )}
+                </div>
+
+                {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
               </div>
             </div>
 
-            <div className="w-full lg:w-1/2 flex flex-col items-center justify-center">
-              <Compare
-                firstImage="https://storage.googleapis.com/gemini-95-icons/asr-tryon.jpg"
-                secondImage="https://storage.googleapis.com/gemini-95-icons/asr-tryon-model.png"
-                slideMode="drag"
-                className="w-full max-w-sm aspect-[2/3] rounded-2xl bg-gray-200 shadow-xl border border-gray-200"
-              />
+            {/* Right Column: Floating Soft Card with Interactive Compare */}
+            <div id="interactive-preview" className="w-full lg:w-1/2 flex items-center justify-center">
+              <div className="relative rounded-[2.5rem] p-3 sm:p-4 bg-white border border-black/[0.06] shadow-[0_20px_60px_rgba(0,0,0,0.06)] transition-all max-w-sm sm:max-w-md w-full">
+                <Compare
+                  firstImage="https://storage.googleapis.com/gemini-95-icons/asr-tryon.jpg"
+                  secondImage="https://storage.googleapis.com/gemini-95-icons/asr-tryon-model.png"
+                  slideMode="drag"
+                  className="w-full aspect-[2/3] rounded-[1.75rem] bg-gray-100 overflow-hidden shadow-inner"
+                />
+                <div className="mt-3 px-2 flex items-center justify-between text-[11px] text-[#6b7280] font-medium">
+                  <span>Uploaded Portrait</span>
+                  <span className="italic">Drag slider to compare</span>
+                  <span>Calibrated AI Model</span>
+                </div>
+              </div>
             </div>
           </motion.div>
         ) : (
+          /* Step 2: Model Review / Generation Screen */
           <motion.div
             key="compare"
-            className="w-full max-w-6xl mx-auto h-full flex flex-col md:flex-row items-center justify-center gap-8 md:gap-12"
+            className="w-full max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-center gap-8 md:gap-14 pt-16 sm:pt-20 pb-12"
             variants={screenVariants}
             initial="initial"
             animate="animate"
             exit="exit"
             transition={{ duration: 0.4, ease: 'easeInOut' }}
           >
-            <div className="md:w-1/2 flex-shrink-0 flex flex-col items-center md:items-start">
-              <div className="text-center md:text-left">
-                <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-800 text-[11px] font-semibold mb-2">
+            <div className="md:w-1/2 flex-shrink-0 flex flex-col items-center md:items-start text-center md:text-left">
+              <div>
+                <div className="inline-flex items-center gap-1.5 text-xs text-[#6b7280] font-medium mb-3">
                   <span>Height: {measurements.height}</span>
-                  <span>·</span>
+                  <span aria-hidden="true">·</span>
                   <span>Build: {measurements.bodyType}</span>
                 </div>
-                <h1 className="text-4xl md:text-5xl font-serif font-bold text-gray-900 leading-tight">
-                  Your Personal Model
-                </h1>
-                <p className="mt-2 text-md text-gray-600">
-                  Calibrated to your exact face and measurements. Drag the slider to review.
+                <h2 className="text-4xl sm:text-5xl font-serif text-[#111827] tracking-tight leading-[1.1]">
+                  <span className="block font-normal">Your Personal</span>
+                  <span className="block font-normal italic text-[#111827]">Model Calibration</span>
+                </h2>
+                <p className="mt-4 text-sm sm:text-base text-[#4b5563] leading-relaxed">
+                  Calibrated to your exact facial features and anatomical proportions. Review the model before entering the virtual studio.
                 </p>
               </div>
 
               {isGenerating && (
-                <div className="flex items-center gap-3 text-lg text-gray-700 font-serif mt-6">
+                <div className="flex items-center gap-3 text-sm text-[#4b5563] mt-8 bg-white px-5 py-3 rounded-2xl border border-black/[0.06] shadow-sm">
                   <Spinner />
                   <span>Synthesizing your model with 100% facial accuracy...</span>
                 </div>
@@ -257,11 +251,11 @@ export const StartScreen: React.FC<StartScreenProps> = ({
 
               {error && (
                 <div className="text-center md:text-left text-red-600 max-w-md mt-6">
-                  <p className="font-semibold">Generation Notice</p>
-                  <p className="text-sm mb-4">{error}</p>
+                  <p className="font-semibold text-xs uppercase tracking-wider">Notice</p>
+                  <p className="text-sm mt-1 mb-4">{error}</p>
                   <button
                     onClick={reset}
-                    className="text-sm font-semibold text-gray-700 hover:underline"
+                    className="text-sm font-medium text-gray-900 underline"
                   >
                     Try Again
                   </button>
@@ -274,29 +268,31 @@ export const StartScreen: React.FC<StartScreenProps> = ({
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 10 }}
-                    transition={{ duration: 0.5 }}
-                    className="flex flex-col sm:flex-row items-center gap-4 mt-8 w-full sm:w-auto"
+                    transition={{ duration: 0.4 }}
+                    className="flex flex-col sm:flex-row items-center gap-3.5 mt-8 w-full sm:w-auto"
                   >
                     <button
                       onClick={reset}
-                      className="w-full sm:w-auto px-4 py-2.5 text-xs sm:text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors border border-gray-300"
+                      className="w-full sm:w-auto px-4 py-2.5 text-xs font-medium text-[#4b5563] hover:text-[#111827] bg-white rounded-xl border border-black/[0.08] shadow-sm hover:shadow transition-all"
                     >
                       Different Photo
                     </button>
+
                     {userImageUrl && (
                       <button
                         onClick={() => onModelFinalized(userImageUrl, measurements)}
-                        className="w-full sm:w-auto px-5 py-2.5 text-xs sm:text-sm font-semibold text-gray-900 bg-amber-100 hover:bg-amber-200 rounded-xl transition-colors border border-amber-300 flex items-center justify-center gap-1.5"
+                        className="w-full sm:w-auto px-5 py-2.5 text-xs font-semibold text-[#111827] bg-amber-50 hover:bg-amber-100 rounded-xl transition-all border border-amber-200"
                         title="Proceed with your original uploaded photo for 100% genuine face fidelity"
                       >
-                        <span>⭐ Use My Original Photo (100% Real Face)</span>
+                        ⭐ Use Original Photo (Real Face)
                       </button>
                     )}
+
                     <button
                       onClick={() => onModelFinalized(generatedModelUrl, measurements)}
-                      className="w-full sm:w-auto relative inline-flex items-center justify-center px-6 py-2.5 text-xs sm:text-sm font-semibold text-white bg-gray-900 rounded-xl cursor-pointer group hover:bg-gray-800 active:scale-98 transition-all shadow-md"
+                      className="w-full sm:w-auto px-6 py-2.5 text-xs font-semibold text-white bg-[#111827] hover:bg-black rounded-xl transition-all shadow-md active:scale-98"
                     >
-                      Use Studio Model &rarr;
+                      Enter Virtual Studio &rarr;
                     </button>
                   </motion.div>
                 )}
@@ -304,16 +300,12 @@ export const StartScreen: React.FC<StartScreenProps> = ({
             </div>
 
             <div className="md:w-1/2 w-full flex items-center justify-center">
-              <div
-                className={`relative rounded-[1.25rem] transition-all duration-700 ease-in-out ${
-                  isGenerating ? 'border border-gray-300 animate-pulse' : 'border border-transparent'
-                }`}
-              >
+              <div className="relative rounded-[2.5rem] p-3 sm:p-4 bg-white border border-black/[0.06] shadow-[0_20px_60px_rgba(0,0,0,0.06)] max-w-sm sm:max-w-md w-full">
                 <Compare
                   firstImage={userImageUrl}
                   secondImage={generatedModelUrl ?? userImageUrl}
                   slideMode="drag"
-                  className="w-[280px] h-[420px] sm:w-[320px] sm:h-[480px] lg:w-[400px] lg:h-[600px] rounded-2xl bg-gray-200 shadow-xl"
+                  className="w-full aspect-[2/3] rounded-[1.75rem] bg-gray-100 overflow-hidden shadow-inner"
                 />
               </div>
             </div>

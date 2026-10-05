@@ -15,9 +15,20 @@
         theme: {
           extend: {
             fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-              serif: ['Instrument Serif', 'serif'],
+              sans: ['Plus Jakarta Sans', 'Inter', '-apple-system', 'sans-serif'],
+              serif: ['Instrument Serif', 'Georgia', 'serif'],
             },
+            colors: {
+              porcelain: '#fafaf9',
+              paper: '#fcfcfb',
+              neuratext: '#111827',
+              neurasub: '#4b5563',
+            },
+            boxShadow: {
+              'neura': '0 8px 30px rgba(0, 0, 0, 0.05)',
+              'neura-float': '0 14px 44px rgba(0, 0, 0, 0.08)',
+              'neura-dock': '0 4px 20px rgba(0, 0, 0, 0.04)',
+            }
           }
         }
       }
@@ -41,7 +52,7 @@
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:wght@400;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital,wght@0,400;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://esm.sh/react-image-crop@^11.0.6/dist/ReactCrop.css" />
     <link rel="stylesheet" href="/index.css" />
   </head>

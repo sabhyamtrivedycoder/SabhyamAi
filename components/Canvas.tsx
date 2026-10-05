@@ -13,6 +13,7 @@ import {
   BookmarkIcon,
   UserIcon,
   MailIcon,
+  XIcon,
 } from './icons';
 import Spinner from './Spinner';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -36,6 +37,10 @@ interface CanvasProps {
   onOpenAuth?: () => void;
   currentUser?: UserProfile | null;
   onOpenContact?: () => void;
+  error?: string | null;
+  onClearError?: () => void;
+  onRetryTryOn?: (modelEndpoint?: string) => void;
+  lastGarmentName?: string;
 }
 
 const Canvas: React.FC<CanvasProps> = ({
@@ -55,6 +60,10 @@ const Canvas: React.FC<CanvasProps> = ({
   onOpenAuth,
   currentUser,
   onOpenContact,
+  error,
+  onClearError,
+  onRetryTryOn,
+  lastGarmentName,
 }) => {
   const [isPoseMenuOpen, setIsPoseMenuOpen] = useState(false);
 
@@ -236,6 +245,65 @@ const Canvas: React.FC<CanvasProps> = ({
           )}
         </AnimatePresence>
       </div>
+
+      {/* Interactive Retry Banner when try-on fails or times out */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: 15, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 15, scale: 0.95 }}
+            className="absolute top-16 left-1/2 -translate-x-1/2 z-40 max-w-lg w-[92%] bg-white/95 backdrop-blur-md rounded-2xl border border-red-200 shadow-xl p-3.5 text-xs text-gray-900"
+          >
+            <div className="flex items-start justify-between gap-2 mb-1.5">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 animate-ping" />
+                <span className="font-semibold text-red-950">Virtual Try-On Notice</span>
+                {lastGarmentName && (
+                  <span className="text-[11px] text-gray-500 truncate max-w-[180px]">({lastGarmentName})</span>
+                )}
+              </div>
+              {onClearError && (
+                <button
+                  type="button"
+                  onClick={onClearError}
+                  className="p-1 text-gray-400 hover:text-black rounded-full"
+                >
+                  <XIcon className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <p className="text-gray-600 mb-3 text-[11px] leading-relaxed">
+              {error}
+            </p>
+            {onRetryTryOn && (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onRetryTryOn('gemini-3.1-flash-lite-image')}
+                  className="px-3 py-1.5 rounded-xl bg-[#111827] text-white hover:bg-black font-semibold text-[11px] transition-all shadow-xs active:scale-98"
+                >
+                  ↻ Auto-Retry with Flash Lite Endpoint
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRetryTryOn('gemini-3.1-flash-image')}
+                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-gray-50 text-gray-800 border border-gray-300 font-semibold text-[11px] transition-all active:scale-98"
+                >
+                  ↻ Retry Primary Endpoint
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRetryTryOn('local_smart_engine')}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 font-semibold text-[11px] transition-all active:scale-98"
+                >
+                  ⚡ Instant Local Fit
+                </button>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Pose Controls */}
       {displayImageUrl && !isLoading && (

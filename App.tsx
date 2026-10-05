@@ -6,6 +6,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import StartScreen from './components/StartScreen';
+import Header from './components/Header';
 import Canvas from './components/Canvas';
 import WardrobePanel from './components/WardrobeModal';
 import OutfitStack from './components/OutfitStack';
@@ -19,6 +20,7 @@ import { ChevronDownIcon, ChevronUpIcon } from './components/icons';
 import { defaultWardrobe } from './wardrobe';
 import Footer from './components/Footer';
 import ContactUsModal from './components/ContactUsModal';
+import ApiDiagnosticModal, { ApiDiagnosticData } from './components/ApiDiagnosticModal';
 import { getFriendlyErrorMessage } from './lib/utils';
 import Spinner from './components/Spinner';
 
@@ -98,6 +100,7 @@ const App: React.FC = () => {
   const [currentPoseIndex, setCurrentPoseIndex] = useState(0);
   const [isSheetCollapsed, setIsSheetCollapsed] = useState(false);
   const [wardrobe, setWardrobe] = useState<WardrobeItem[]>(defaultWardrobe);
+  const [lastSelectedGarment, setLastSelectedGarment] = useState<{ garment: WardrobeItem; input: File | string } | null>(null);
   const isMobile = useMediaQuery('(max-width: 767px)');
 
   // Modals state
@@ -106,6 +109,44 @@ const App: React.FC = () => {
   const [isSavedLooksModalOpen, setIsSavedLooksModalOpen] = useState(false);
   const [isStylistPanelOpen, setIsStylistPanelOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+
+  // Gemini API Diagnostic Tool state
+  const [diagnosticData, setDiagnosticData] = useState<ApiDiagnosticData | null>(null);
+  const [isDiagnosticOpen, setIsDiagnosticOpen] = useState(false);
+  const [isCheckingDiagnostic, setIsCheckingDiagnostic] = useState(false);
+
+  const runApiDiagnostics = useCallback(async () => {
+    setIsCheckingDiagnostic(true);
+    try {
+      const res = await fetch('/api/diagnostic');
+      if (res.ok) {
+        const data = await res.json();
+        setDiagnosticData(data);
+      } else {
+        setDiagnosticData({
+          status: 'error',
+          code: 'SERVER_HTTP_ERROR',
+          message: `Diagnostic endpoint responded with HTTP ${res.status}`,
+          isReachable: false,
+          hasApiKey: false,
+        });
+      }
+    } catch (err: any) {
+      setDiagnosticData({
+        status: 'error',
+        code: 'FETCH_FAILED',
+        message: `Could not reach server diagnostic endpoint: ${err?.message || 'Network error'}`,
+        isReachable: false,
+        hasApiKey: false,
+      });
+    } finally {
+      setIsCheckingDiagnostic(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    runApiDiagnostics();
+  }, [runApiDiagnostics]);
 
   // Sync favorites & saved looks to localStorage
   useEffect(() => {
@@ -189,12 +230,20 @@ const App: React.FC = () => {
         return;
     }
 
+    setLastSelectedGarment({ garment: garmentInfo, input: garmentInput });
     setError(null);
     setIsLoading(true);
     setLoadingMessage(`Trying on ${garmentInfo.name}...`);
 
     try {
-      const newImageUrl = await generateVirtualTryOnImage(displayImageUrl, garmentInput);
+      const newImageUrl = await generateVirtualTryOnImage(
+        displayImageUrl,
+        garmentInput,
+        garmentInfo.category,
+        {
+          onProgressUpdate: (msg) => setLoadingMessage(msg),
+        }
+      );
       const currentPoseInstruction = POSE_INSTRUCTIONS[currentPoseIndex];
       
       const newLayer: OutfitLayer = { 
@@ -222,6 +271,55 @@ const App: React.FC = () => {
       setLoadingMessage('');
     }
   }, [displayImageUrl, isLoading, currentPoseIndex, outfitHistory, currentOutfitIndex]);
+
+  // Retry try-on with automatic or specific model endpoint selection
+  const handleRetryWithModel = useCallback(async (preferredModel: string = 'gemini-3.1-flash-lite-image') => {
+    if (!lastSelectedGarment || !displayImageUrl || isLoading) return;
+
+    setError(null);
+    setIsLoading(true);
+    const targetLabel = preferredModel === 'local_smart_engine' ? 'Local Smart Fitting Engine' : preferredModel;
+    setLoadingMessage(`Retrying ${lastSelectedGarment.garment.name} via ${targetLabel}...`);
+
+    try {
+      let newImageUrl: string;
+      if (preferredModel === 'local_smart_engine') {
+        const { compositeTryOn } = await import('./lib/fittingEngine');
+        newImageUrl = await compositeTryOn(
+          displayImageUrl,
+          lastSelectedGarment.input,
+          lastSelectedGarment.garment.category
+        );
+      } else {
+        newImageUrl = await generateVirtualTryOnImage(
+          displayImageUrl,
+          lastSelectedGarment.input,
+          lastSelectedGarment.garment.category,
+          {
+            preferredModel,
+            onProgressUpdate: (msg) => setLoadingMessage(msg),
+          }
+        );
+      }
+
+      const currentPoseInstruction = POSE_INSTRUCTIONS[currentPoseIndex];
+      const newLayer: OutfitLayer = {
+        garment: lastSelectedGarment.garment,
+        poseImages: { [currentPoseInstruction]: newImageUrl },
+      };
+
+      setOutfitHistory(prevHistory => {
+        const newHistory = prevHistory.slice(0, currentOutfitIndex + 1);
+        return [...newHistory, newLayer];
+      });
+      setCurrentOutfitIndex(prev => prev + 1);
+    } catch (err) {
+      setError(getFriendlyErrorMessage(err, 'Retry attempt failed'));
+    } finally {
+      setIsLoading(false);
+      setLoadingMessage('');
+    }
+  }, [lastSelectedGarment, displayImageUrl, isLoading, currentOutfitIndex, currentPoseIndex]);
 
   // Undo & Redo Navigation
   const canUndo = currentOutfitIndex > 0;
@@ -392,12 +490,43 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="font-sans antialiased text-gray-900">
+    <div className="font-sans antialiased text-[#111827] bg-[#fafaf9] min-h-screen flex flex-col justify-between selection:bg-[#111827] selection:text-[#fafaf9]">
+      <Header
+        onOpenContact={() => setIsContactModalOpen(true)}
+        onOpenAuth={() => setIsAuthModalOpen(true)}
+        onStartOver={handleStartOver}
+        isOnDressingScreen={!!modelImageUrl}
+        isConfigError={diagnosticData?.status === 'error' || diagnosticData?.isReachable === false}
+        onOpenDiagnostic={() => setIsDiagnosticOpen(true)}
+      />
+
+      {/* Prominent Configuration Error Banner if API is unreachable */}
+      {(diagnosticData?.status === 'error' || diagnosticData?.isReachable === false) && (
+        <div className="w-full fixed top-18 left-0 right-0 z-30 px-3 sm:px-6 pointer-events-none">
+          <div className="max-w-4xl mx-auto bg-amber-50/95 backdrop-blur-md border border-amber-300 rounded-2xl p-2.5 sm:px-4 sm:py-2 flex items-center justify-between text-xs text-amber-950 shadow-md pointer-events-auto">
+            <div className="flex items-center gap-2 truncate mr-2">
+              <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 animate-ping" />
+              <span className="font-semibold text-amber-900 shrink-0">Configuration Error:</span>
+              <span className="truncate text-amber-800">
+                {diagnosticData?.message || 'Gemini API is unreachable. Virtual try-ons are running on local Smart Fitting failover.'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsDiagnosticOpen(true)}
+              className="shrink-0 px-2.5 py-1 rounded-xl bg-amber-900 text-white hover:bg-black font-medium text-[11px] transition-all shadow-2xs cursor-pointer active:scale-98"
+            >
+              View Diagnostics &rarr;
+            </button>
+          </div>
+        </div>
+      )}
+
       <AnimatePresence mode="wait">
         {!modelImageUrl ? (
           <motion.div
             key="start-screen"
-            className="w-screen min-h-screen flex items-start sm:items-center justify-center bg-gray-50 p-4 pb-20"
+            className="w-full flex-grow flex flex-col justify-between pt-10 px-4"
             variants={viewVariants}
             initial="initial"
             animate="animate"
@@ -441,6 +570,10 @@ const App: React.FC = () => {
                   onOpenAuth={() => setIsAuthModalOpen(true)}
                   currentUser={currentUser}
                   onOpenContact={() => setIsContactModalOpen(true)}
+                  error={error}
+                  onClearError={() => setError(null)}
+                  onRetryTryOn={handleRetryWithModel}
+                  lastGarmentName={lastSelectedGarment?.garment?.name}
                 />
               </div>
 
@@ -561,6 +694,15 @@ const App: React.FC = () => {
       <ContactUsModal
         isOpen={isContactModalOpen}
         onClose={() => setIsContactModalOpen(false)}
+      />
+
+      {/* Gemini API Diagnostic Tool Modal */}
+      <ApiDiagnosticModal
+        isOpen={isDiagnosticOpen}
+        onClose={() => setIsDiagnosticOpen(false)}
+        diagnosticData={diagnosticData}
+        onRecheck={runApiDiagnostics}
+        isChecking={isCheckingDiagnostic}
       />
     </div>
   );

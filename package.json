@@ -4,24 +4,29 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "tsx server.ts",
     "build": "vite build",
+    "start": "tsx server.ts",
     "preview": "vite preview",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@google/genai": "^1.10.0",
+    "@tsparticles/engine": "^3.5.0",
+    "@tsparticles/react": "^3.0.0",
+    "@tsparticles/slim": "^3.5.0",
+    "clsx": "^2.1.1",
+    "express": "^5.2.1",
+    "framer-motion": "^11.2.12",
+    "jspdf": "^4.2.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "@google/genai": "^1.10.0",
     "react-image-crop": "^11.0.6",
-    "framer-motion": "^11.2.12",
-    "clsx": "^2.1.1",
     "tailwind-merge": "^2.4.0",
-    "@tsparticles/react": "^3.0.0",
-    "@tsparticles/engine": "^3.5.0",
-    "@tsparticles/slim": "^3.5.0"
+    "tsx": "^4.23.15"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
