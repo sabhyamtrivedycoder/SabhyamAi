@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 130" width="100%" height="100%">
+  <defs>
+    <linearGradient id="neonBorder" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f42e88" />
+      <stop offset="45%" stop-color="#a432ea" />
+      <stop offset="100%" stop-color="#5522ee" />
+    </linearGradient>
+    <linearGradient id="figGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a83be8" />
+      <stop offset="100%" stop-color="#5e22e5" />
+    </linearGradient>
+    <linearGradient id="leftArm" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7a2ee8" />
+      <stop offset="100%" stop-color="#521fe2" />
+    </linearGradient>
+    <linearGradient id="rightArm" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c43fe8" />
+      <stop offset="100%" stop-color="#8028e6" />
+    </linearGradient>
+  </defs>
+
+  <!-- Outer Rounded Neon Badge -->
+  <rect
+    x="5"
+    y="5"
+    width="90"
+    height="120"
+    rx="22"
+    fill="#0a0812"
+    stroke="url(#neonBorder)"
+    stroke-width="6.5"
+  />
+
+  <!-- Top Halo / Accent Bar -->
+  <rect x="40" y="19" width="20" height="5" rx="2.5" fill="#ca4ce8" />
+
+  <!-- Avatar Head -->
+  <circle cx="50" cy="38" r="11" fill="url(#figGrad)" />
+
+  <!-- Left Shoulder / Arm -->
+  <path
+    d="M 23 60 L 43 47 L 43 68 L 30 88 L 23 75 Z"
+    fill="url(#leftArm)"
+  />
+
+  <!-- Right Shoulder / Arm -->
+  <path
+    d="M 77 60 L 57 47 L 57 68 L 70 88 L 77 75 Z"
+    fill="url(#rightArm)"
+  />
+
+  <!-- Center Torso / Fountain Pen Nib Stylized Suit Silhouette -->
+  <!-- Left Half -->
+  <path
+    d="M 50 49 L 36 62 L 36 84 L 50 108 Z"
+    fill="#571ee2"
+  />
+  <!-- Right Half -->
+  <path
+    d="M 50 49 L 64 62 L 64 84 L 50 108 Z"
+    fill="#962ee7"
+  />
+  <!-- Center Crisp Seam -->
+  <line x1="50" y1="49" x2="50" y2="108" stroke="#110d22" stroke-width="1.2" />
+</svg>
