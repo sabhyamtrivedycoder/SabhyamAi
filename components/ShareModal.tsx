@@ -242,7 +242,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
   // Social Quick Links
   const shareText = encodeURIComponent(
-    `Check out my virtual try-on look created with Sabhyam Ai! 👗✨ #SabhyamAi #VirtualTryOn #OOTD`
+    `Check out my virtual try-on look created with Sabhyam Ai!  #SabhyamAi #VirtualTryOn #OOTD`
   );
   const currentUrlEncoded = encodeURIComponent(window.location.href);
 

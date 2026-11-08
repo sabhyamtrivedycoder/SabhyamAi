@@ -96,7 +96,7 @@ const WardrobePanel: React.FC<WardrobePanelProps> = ({
               : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
           }`}
         >
-          <span>🔥 Baggy & Street</span>
+          <span> Baggy & Street</span>
         </button>
 
         <button

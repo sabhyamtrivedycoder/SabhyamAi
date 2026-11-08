@@ -101,7 +101,7 @@ export const ApiDiagnosticModal: React.FC<ApiDiagnosticModalProps> = ({
               }`}
             >
               <div className="text-xl shrink-0 mt-0.5">
-                {isConfigError ? '⚠️' : '✅'}
+                {isConfigError ? 'Alert' : 'Active'}
               </div>
               <div className="space-y-1">
                 <p className="font-semibold text-sm">
@@ -140,7 +140,7 @@ export const ApiDiagnosticModal: React.FC<ApiDiagnosticModalProps> = ({
                   Image Try-On Model
                 </span>
                 <span className="font-mono text-xs text-gray-800 block">
-                  gemini-3.1-flash-image
+                  gemini-nano-banana-2.1
                 </span>
               </div>
 

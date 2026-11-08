@@ -117,7 +117,7 @@ const getClientAi = () => {
     });
 };
 
-const clientModel = 'gemini-3.1-flash-image';
+const clientModel = 'gemini-nano-banana-2.1';
 const textModel = 'gemini-3.8-flash';
 
 /**
@@ -194,7 +194,7 @@ const notifyDiagnostic = (step: string, details?: any, status: 'info' | 'success
 };
 
 export interface TryOnOptions {
-    preferredModel?: 'gemini-3.1-flash-image' | 'gemini-3.1-flash-lite-image' | string;
+    preferredModel?: 'gemini-nano-banana-2.1' | 'gemini-3-pro-image' | string;
     onProgressUpdate?: (message: string) => void;
 }
 
@@ -208,7 +208,7 @@ export const generateVirtualTryOnImage = async (
     options?: TryOnOptions
 ): Promise<string> => {
     const tryOnStartTime = Date.now();
-    console.group(`👗 [Sabhyam AI Try-On] Starting Virtual Fitting Pipeline (${garmentCategory})`);
+    console.group(` [Sabhyam AI Try-On] Starting Virtual Fitting Pipeline (${garmentCategory})`);
     notifyDiagnostic('tryon_started', { category: garmentCategory }, 'info');
 
     // -------------------------------------------------------------
@@ -224,12 +224,12 @@ export const generateVirtualTryOnImage = async (
         }
 
         const isModelDataUrl = modelImageUrl.startsWith('data:');
-        console.log(`  ✓ Model Image: ${isModelDataUrl ? `Data URL (${Math.round(modelImageUrl.length / 1024)} KB)` : modelImageUrl}`);
-        console.log(`  ✓ Garment Input: ${typeof garmentInput === 'string' ? (garmentInput.startsWith('data:') ? `Data URL (${Math.round(garmentInput.length / 1024)} KB)` : garmentInput) : `File: ${garmentInput.name} (${Math.round(garmentInput.size / 1024)} KB)`}`);
-        console.log(`  ✓ Garment Category: "${garmentCategory}"`);
+        console.log(`   Model Image: ${isModelDataUrl ? `Data URL (${Math.round(modelImageUrl.length / 1024)} KB)` : modelImageUrl}`);
+        console.log(`   Garment Input: ${typeof garmentInput === 'string' ? (garmentInput.startsWith('data:') ? `Data URL (${Math.round(garmentInput.length / 1024)} KB)` : garmentInput) : `File: ${garmentInput.name} (${Math.round(garmentInput.size / 1024)} KB)`}`);
+        console.log(`   Garment Category: "${garmentCategory}"`);
         notifyDiagnostic('inputs_validated', { garmentCategory }, 'success');
     } catch (step1Err: any) {
-        console.error('❌ [Step 1/6 Error - Invalid Inputs]:', step1Err);
+        console.error(' [Step 1/6 Error - Invalid Inputs]:', step1Err);
         console.groupEnd();
         notifyDiagnostic('validation_failed', { error: step1Err.message }, 'error');
         throw step1Err;
@@ -243,18 +243,18 @@ export const generateVirtualTryOnImage = async (
     try {
         if (typeof garmentInput === 'string') {
             garmentUrl = garmentInput;
-            console.log(`  ✓ Garment URL detected: ${garmentUrl.substring(0, 80)}...`);
+            console.log(`   Garment URL detected: ${garmentUrl.substring(0, 80)}...`);
         } else {
-            console.log(`  ⟳ Reading file "${garmentInput.name}" to base64 data URL...`);
+            console.log(`   Reading file "${garmentInput.name}" to base64 data URL...`);
             const part = await fileToPart(garmentInput);
             garmentUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-            console.log(`  ✓ File successfully serialized (${part.inlineData.mimeType}, ${Math.round(part.inlineData.data.length / 1024)} KB)`);
+            console.log(`   File successfully serialized (${part.inlineData.mimeType}, ${Math.round(part.inlineData.data.length / 1024)} KB)`);
         }
         notifyDiagnostic('garment_encoded', { sizeKb: Math.round(garmentUrl.length / 1024) }, 'success');
     } catch (step2Err: any) {
-        console.error('❌ [Step 2/6 Error - Garment Serialization Failed]:', step2Err);
+        console.error(' [Step 2/6 Error - Garment Serialization Failed]:', step2Err);
         notifyDiagnostic('encoding_failed', { error: step2Err.message }, 'error');
-        console.warn('  ⚠️ Falling back to direct client composite due to file read failure.');
+        console.warn('   Falling back to direct client composite due to file read failure.');
         console.groupEnd();
         return await compositeTryOn(modelImageUrl, garmentInput, garmentCategory);
     }
@@ -268,7 +268,7 @@ export const generateVirtualTryOnImage = async (
     const apiCallStart = Date.now();
 
     try {
-        console.log(`  ⟳ Calling POST /api/try-on with timeout protection...`);
+        console.log(`   Calling POST /api/try-on with timeout protection...`);
         notifyDiagnostic('api_dispatching', null, 'info');
 
         const controller = new AbortController();
@@ -291,17 +291,17 @@ export const generateVirtualTryOnImage = async (
 
         clearTimeout(timeoutId);
         const apiDuration = Date.now() - apiCallStart;
-        console.log(`  ✓ Server responded in ${apiDuration}ms with HTTP Status: ${response.status} ${response.statusText}`);
+        console.log(`   Server responded in ${apiDuration}ms with HTTP Status: ${response.status} ${response.statusText}`);
 
         if (response.ok) {
             serverHttpOk = true;
             serverResponseJson = await response.json();
             if (serverResponseJson.retried && serverResponseJson.modelUsed) {
-                console.log(`  🔄 Server automatically retried virtual try-on using secondary endpoint: ${serverResponseJson.modelUsed}`);
+                console.log(`   Server automatically retried virtual try-on using secondary endpoint: ${serverResponseJson.modelUsed}`);
                 options?.onProgressUpdate?.(`Auto-retried with ${serverResponseJson.modelUsed}...`);
                 notifyDiagnostic('auto_retried', { modelUsed: serverResponseJson.modelUsed }, 'info');
             }
-            console.log('  ✓ Response parsed successfully:', {
+            console.log('   Response parsed successfully:', {
                 hasImageUrl: !!serverResponseJson.imageUrl,
                 fallback: serverResponseJson.fallback,
                 reason: serverResponseJson.reason,
@@ -311,12 +311,12 @@ export const generateVirtualTryOnImage = async (
             });
         } else {
             const errorBody = await response.text();
-            console.warn(`  ⚠️ Server returned HTTP error ${response.status}:`, errorBody);
+            console.warn(`   Server returned HTTP error ${response.status}:`, errorBody);
             notifyDiagnostic('api_http_error', { status: response.status, body: errorBody }, 'warn');
         }
     } catch (step3Err: any) {
         const apiDuration = Date.now() - apiCallStart;
-        console.warn(`  ⚠️ [Step 3/6 Network/Server Warning] /api/try-on call failed in ${apiDuration}ms:`, step3Err?.message || step3Err);
+        console.warn(`   [Step 3/6 Network/Server Warning] /api/try-on call failed in ${apiDuration}ms:`, step3Err?.message || step3Err);
         notifyDiagnostic('api_network_error', { message: step3Err?.message }, 'warn');
     }
 
@@ -325,7 +325,7 @@ export const generateVirtualTryOnImage = async (
     // -------------------------------------------------------------
     console.log('%c[Step 4/6: Evaluating Result & Gemini Quota State]', 'color: #3b82f6; font-weight: bold;');
     if (serverHttpOk && serverResponseJson && serverResponseJson.imageUrl && !serverResponseJson.fallback) {
-        console.log(`  🎉 SUCCESS: Gemini AI Virtual Try-On generated high-resolution outfit (${Math.round(serverResponseJson.imageUrl.length / 1024)} KB) in ${Date.now() - tryOnStartTime}ms`);
+        console.log(`   SUCCESS: Gemini AI Virtual Try-On generated high-resolution outfit (${Math.round(serverResponseJson.imageUrl.length / 1024)} KB) in ${Date.now() - tryOnStartTime}ms`);
         notifyDiagnostic('gemini_success', { durationMs: Date.now() - tryOnStartTime }, 'success');
         console.groupEnd();
         return serverResponseJson.imageUrl;
@@ -333,20 +333,20 @@ export const generateVirtualTryOnImage = async (
 
     // If server responded with a fallback signal, log the exact diagnosed reason:
     if (serverResponseJson?.fallback) {
-        console.warn('  ⚠️ Server flagged fallback. Diagnostic analysis of why Gemini did not generate an image:');
+        console.warn('   Server flagged fallback. Diagnostic analysis of why Gemini did not generate an image:');
         console.warn(`    • Failure Reason Code: "${serverResponseJson.reason}"`);
         if (serverResponseJson.error) {
             console.warn(`    • Raw Gemini Error:`, serverResponseJson.error);
             if (String(serverResponseJson.error).includes('429') || String(serverResponseJson.error).includes('RESOURCE_EXHAUSTED')) {
-                console.error('    🚨 DIAGNOSTIC ALERT: Google Gemini API quota is EXHAUSTED (Error 429: RESOURCE_EXHAUSTED). The free tier daily/minute quota for "gemini-3.1-flash-image" was reached on the user\'s project.');
+                console.error('     DIAGNOSTIC ALERT: Google Gemini API quota is EXHAUSTED (Error 429: RESOURCE_EXHAUSTED). The free tier daily/minute quota for "gemini-3.1-flash-image" was reached on the user\'s project.');
                 notifyDiagnostic('quota_exhausted', { rawError: serverResponseJson.error }, 'warn');
             } else if (String(serverResponseJson.error).includes('403') || String(serverResponseJson.error).includes('PERMISSION_DENIED')) {
-                console.error('    🚨 DIAGNOSTIC ALERT: API key permission denied (Error 403). Check GEMINI_API_KEY project permissions.');
+                console.error('     DIAGNOSTIC ALERT: API key permission denied (Error 403). Check GEMINI_API_KEY project permissions.');
                 notifyDiagnostic('permission_denied', { rawError: serverResponseJson.error }, 'warn');
             }
         }
         if (serverResponseJson.reason === 'no_api_key') {
-            console.error('    🚨 DIAGNOSTIC ALERT: GEMINI_API_KEY is not defined in the server environment.');
+            console.error('     DIAGNOSTIC ALERT: GEMINI_API_KEY is not defined in the server environment.');
             notifyDiagnostic('missing_key', null, 'warn');
         }
     }
@@ -355,7 +355,7 @@ export const generateVirtualTryOnImage = async (
     // STEP 5: Engaging Client-Side Smart Fitting Engine (Zero-Downtime Fallback)
     // -------------------------------------------------------------
     console.log('%c[Step 5/6: Engaging Zero-Cost Canvas Fitting Engine]', 'color: #3b82f6; font-weight: bold;');
-    console.log('  ⟳ Applying garment using anatomically-calibrated client compositing engine...');
+    console.log('   Applying garment using anatomically-calibrated client compositing engine...');
     notifyDiagnostic('client_engine_engaged', null, 'info');
 
     try {
@@ -371,13 +371,13 @@ export const generateVirtualTryOnImage = async (
             throw new Error('Compositing engine produced empty output');
         }
 
-        console.log(`  ✓ Outfit successfully rendered and draped in ${compositeDuration}ms (${Math.round(compositedResult.length / 1024)} KB)`);
-        console.log(`  ⏱️ Total pipeline time: ${Date.now() - tryOnStartTime}ms`);
+        console.log(`   Outfit successfully rendered and draped in ${compositeDuration}ms (${Math.round(compositedResult.length / 1024)} KB)`);
+        console.log(`   Total pipeline time: ${Date.now() - tryOnStartTime}ms`);
         notifyDiagnostic('tryon_completed', { durationMs: Date.now() - tryOnStartTime }, 'success');
         console.groupEnd();
         return compositedResult;
     } catch (step5Err: any) {
-        console.error('❌ [Step 5/6 Error - Canvas Compositing Failed]:', step5Err);
+        console.error(' [Step 5/6 Error - Canvas Compositing Failed]:', step5Err);
         notifyDiagnostic('engine_failed', { error: step5Err?.message }, 'error');
         console.groupEnd();
         // Return modelImageUrl as ultimate fail-safe so UI never crashes or breaks

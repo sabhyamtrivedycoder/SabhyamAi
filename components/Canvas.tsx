@@ -280,24 +280,24 @@ const Canvas: React.FC<CanvasProps> = ({
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => onRetryTryOn('gemini-3.1-flash-lite-image')}
+                  onClick={() => onRetryTryOn('gemini-3-pro-image')}
                   className="px-3 py-1.5 rounded-xl bg-[#111827] text-white hover:bg-black font-semibold text-[11px] transition-all shadow-xs active:scale-98"
                 >
-                  ↻ Auto-Retry with Flash Lite Endpoint
+                  Retry with Pro Image Endpoint
                 </button>
                 <button
                   type="button"
-                  onClick={() => onRetryTryOn('gemini-3.1-flash-image')}
+                  onClick={() => onRetryTryOn('gemini-nano-banana-2.1')}
                   className="px-3 py-1.5 rounded-xl bg-white hover:bg-gray-50 text-gray-800 border border-gray-300 font-semibold text-[11px] transition-all active:scale-98"
                 >
-                  ↻ Retry Primary Endpoint
+                  Retry Primary Endpoint
                 </button>
                 <button
                   type="button"
                   onClick={() => onRetryTryOn('local_smart_engine')}
                   className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 font-semibold text-[11px] transition-all active:scale-98"
                 >
-                  ⚡ Instant Local Fit
+                  Instant Local Fit
                 </button>
               </div>
             )}

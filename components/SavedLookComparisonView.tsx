@@ -272,7 +272,7 @@ export const SavedLookComparisonView: React.FC<SavedLookComparisonViewProps> = (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             <div className="p-3 bg-white rounded-xl border border-purple-100 shadow-2xs">
               <span className="font-bold text-gray-900 block mb-1">
-                📐 Silhouette & Proportions
+                 Silhouette & Proportions
               </span>
               <p className="text-gray-700 leading-relaxed">
                 {comparison.silhouetteContrast}
@@ -281,7 +281,7 @@ export const SavedLookComparisonView: React.FC<SavedLookComparisonViewProps> = (
 
             <div className="p-3 bg-white rounded-xl border border-purple-100 shadow-2xs">
               <span className="font-bold text-gray-900 block mb-1">
-                🎨 Palette & Visual Weight
+                 Palette & Visual Weight
               </span>
               <p className="text-gray-700 leading-relaxed">
                 {comparison.paletteContrast}
@@ -292,7 +292,7 @@ export const SavedLookComparisonView: React.FC<SavedLookComparisonViewProps> = (
           {/* Occasion Verdict */}
           <div className="p-3 bg-white rounded-xl border border-purple-100 shadow-2xs text-xs">
             <span className="font-bold text-gray-900 block mb-1">
-              ✨ Occasion & Setting Match
+               Occasion & Setting Match
             </span>
             <p className="text-gray-700 leading-relaxed">
               {comparison.occasionVerdict}

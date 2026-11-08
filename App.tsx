@@ -273,7 +273,7 @@ const App: React.FC = () => {
   }, [displayImageUrl, isLoading, currentPoseIndex, outfitHistory, currentOutfitIndex]);
 
   // Retry try-on with automatic or specific model endpoint selection
-  const handleRetryWithModel = useCallback(async (preferredModel: string = 'gemini-3.1-flash-lite-image') => {
+  const handleRetryWithModel = useCallback(async (preferredModel: string = 'gemini-3-pro-image') => {
     if (!lastSelectedGarment || !displayImageUrl || isLoading) return;
 
     setError(null);

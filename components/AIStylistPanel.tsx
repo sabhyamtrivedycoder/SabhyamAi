@@ -230,7 +230,7 @@ export const AIStylistPanel: React.FC<AIStylistPanelProps> = ({
                     {activeTab === 'fit_calculator' ? (
                       <RulerIcon className="w-5 h-5 text-pink-400" />
                     ) : activeTab === 'moodboard' ? (
-                      <span className="text-xl">📸</span>
+                      <span className="text-xl"></span>
                     ) : activeTab === 'compare_looks' ? (
                       <span className="text-xl">⚖️</span>
                     ) : (
@@ -297,7 +297,7 @@ export const AIStylistPanel: React.FC<AIStylistPanelProps> = ({
                   }`}
                   title="Style Moodboard"
                 >
-                  <span className="text-xs">📸</span>
+                  <span className="text-xs"></span>
                   <span className="truncate">Moodboard</span>
                 </button>
 
@@ -626,7 +626,7 @@ export const AIStylistPanel: React.FC<AIStylistPanelProps> = ({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 text-white flex items-center justify-center text-xs shadow-xs">
-                          ✨
+                          
                         </div>
                         <div>
                           <h5 className="text-xs font-bold uppercase tracking-wider text-purple-950">
@@ -662,7 +662,7 @@ export const AIStylistPanel: React.FC<AIStylistPanelProps> = ({
 
                         <div className="p-2.5 bg-white/95 rounded-xl border border-purple-100 shadow-2xs">
                           <span className="font-bold text-purple-950 block mb-0.5">
-                            💍 Jewelry & Chains
+                             Jewelry & Chains
                           </span>
                           <p className="text-gray-700 leading-relaxed">
                             {accessoryTips.jewelryTip}
@@ -671,7 +671,7 @@ export const AIStylistPanel: React.FC<AIStylistPanelProps> = ({
 
                         <div className="p-2.5 bg-white/95 rounded-xl border border-purple-100 shadow-2xs">
                           <span className="font-bold text-purple-950 block mb-0.5">
-                            👟 Footwear Anchors
+                             Footwear Anchors
                           </span>
                           <p className="text-gray-700 leading-relaxed">
                             {accessoryTips.footwearTip}
@@ -680,7 +680,7 @@ export const AIStylistPanel: React.FC<AIStylistPanelProps> = ({
 
                         <div className="p-2.5 bg-white/95 rounded-xl border border-purple-100 shadow-2xs">
                           <span className="font-bold text-purple-950 block mb-0.5">
-                            🎒 Bags & Tactical Accents
+                             Bags & Tactical Accents
                           </span>
                           <p className="text-gray-700 leading-relaxed">
                             {accessoryTips.bagTip}
@@ -689,7 +689,7 @@ export const AIStylistPanel: React.FC<AIStylistPanelProps> = ({
 
                         <div className="p-2.5 bg-white/95 rounded-xl border border-purple-100 shadow-2xs">
                           <span className="font-bold text-purple-950 block mb-0.5">
-                            🧥 Layering Physics
+                             Layering Physics
                           </span>
                           <p className="text-gray-700 leading-relaxed">
                             {accessoryTips.layeringTip}

@@ -35,7 +35,8 @@ const getAiClient = () => {
   });
 };
 
-const IMAGE_MODEL = 'gemini-3.1-flash-image';
+const IMAGE_MODEL = 'gemini-nano-banana-2.1';
+const SECONDARY_IMAGE_MODEL = 'gemini-3-pro-image';
 const TEXT_MODEL = 'gemini-3.8-flash';
 
 /**
@@ -314,8 +315,8 @@ Your task is to create a photorealistic image where the person from the 'model i
 4. **STYLE & FIT:** Apply authentic ${garmentCategory || 'baggy streetwear'} drape with realistic fabric physics.
 5. **OUTPUT:** Return ONLY the final photorealistic image.`;
 
-    const primaryModel = req.body.preferredModel || 'gemini-3.1-flash-image';
-    const secondaryModel = primaryModel === 'gemini-3.1-flash-image' ? 'gemini-3.1-flash-lite-image' : 'gemini-3.1-flash-image';
+    const primaryModel = req.body.preferredModel || IMAGE_MODEL;
+    const secondaryModel = primaryModel === IMAGE_MODEL ? SECONDARY_IMAGE_MODEL : IMAGE_MODEL;
 
     console.log(`[Server /api/try-on] Attempting primary model endpoint: "${primaryModel}"...`);
 
@@ -341,8 +342,8 @@ Your task is to create a photorealistic image where the person from the 'model i
       response = await Promise.race([primaryPromise, timeoutPromise]);
     } catch (primaryErr: any) {
       primaryErrorMsg = primaryErr?.message || String(primaryErr);
-      console.warn(`[Server /api/try-on] ⚠️ Primary endpoint "${primaryModel}" failed: ${primaryErrorMsg}`);
-      console.log(`[Server /api/try-on] 🔄 Automatically retrying virtual try-on via secondary endpoint "${secondaryModel}"...`);
+      console.warn(`[Server /api/try-on] Primary endpoint "${primaryModel}" failed: ${primaryErrorMsg}`);
+      console.log(`[Server /api/try-on] Automatically retrying virtual try-on via secondary endpoint "${secondaryModel}"...`);
 
       didAutoRetry = true;
       usedModel = secondaryModel;
@@ -361,9 +362,9 @@ Your task is to create a photorealistic image where the person from the 'model i
         );
 
         response = await Promise.race([secondaryPromise, secondaryTimeout]);
-        console.log(`[Server /api/try-on] ✓ Secondary endpoint "${secondaryModel}" succeeded!`);
+        console.log(`[Server /api/try-on] Secondary endpoint "${secondaryModel}" succeeded!`);
       } catch (secondaryErr: any) {
-        console.error(`[Server /api/try-on] ❌ Both endpoints failed. Secondary error: ${secondaryErr?.message}`);
+        console.error(`[Server /api/try-on] Both endpoints failed. Secondary error: ${secondaryErr?.message}`);
         throw new Error(`Primary (${primaryModel}): ${primaryErrorMsg} | Secondary (${secondaryModel}): ${secondaryErr?.message}`);
       }
     }
