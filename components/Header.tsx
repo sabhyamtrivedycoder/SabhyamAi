@@ -5,6 +5,7 @@
 
 import React from 'react';
 import Logo from './Logo';
+import { Mascot } from './Mascot';
 
 interface HeaderProps {
   onOpenContact?: () => void;
@@ -35,6 +36,13 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Logo size="sm" showText={true} />
           </button>
+
+          <Mascot
+            directions="/mascots/sabhyam-directions.webp"
+            reactions="/mascots/sabhyam-reactions.webp"
+            size={44}
+            label="Sabhyam"
+          />
 
           {/* Diagnostic Error Badge if API is unreachable */}
           {isConfigError && onOpenDiagnostic && (
